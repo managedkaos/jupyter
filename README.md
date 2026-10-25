@@ -57,6 +57,13 @@ Pull requests build without publishing. All pushes and manual
 runs publish to `ghcr.io/<owner>/<repository>` using the built-in `GITHUB_TOKEN`
 with `packages: write`; no separate registry secret is required. The workflow
 includes OCI labels and archives the Docker metadata as a workflow artifact.
+The jobs run in order: `lint → build → test → push`. The build job generates
+metadata and builds both platforms once, saving the image with its tags and
+labels as an artifact. The test job loads that artifact and runs the integration
+tests on both platforms (ARM64 uses QEMU). Once tests pass, the push job loads
+the same artifact and pushes its existing tags without rebuilding. Docker's
+containerd image store preserves both platforms through save, load, and push.
+Pull requests skip the push job.
 
 Images receive short and full commit SHA tags and, for branch builds, a branch
 tag. Git version tags do not produce semantic version image tags. After the first
@@ -67,7 +74,7 @@ can pull it.
 
 ## Development checks
 
-The workflow runs lint, test, and build jobs in sequence. Python 3.14 runs the
+Python 3.14 runs the
 development tools; the notebook image uses Python 3.13. Install the tools in an
 isolated virtual environment, then run the same checks locally:
 
@@ -84,4 +91,5 @@ Pre-commit checks tracked files; stage new files before running it locally.
 integration checks for dependencies, writable notebooks, non-root execution,
 server health, and authentication. Temporary test containers are removed afterward.
 Use `make` to see all targets, or `make test IMAGE=jupyter:local` to choose a local
-image tag. The tests use the host architecture; the publish job builds both architectures.
+image tag. Use `make test-image` to test an existing image without rebuilding.
+Local tests use the host architecture by default; CI tests both platforms.

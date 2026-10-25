@@ -31,36 +31,20 @@ jobs:
       - name: Run pre-commit workflow
         run: make pre-commit-install pre-commit-run
 
-  test:
+  build:
     needs: lint
     runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      # The containerd store preserves both platforms through load/save/push.
+      - name: Setup Docker image store
+        uses: docker/setup-docker-action@v5
         with:
-          python-version: "3.14"
-
-      - name: Install dependencies
-        run: make development-requirements
-
-      - name: Test with unittest
-        run: make test
-
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: write
-      # This is used to complete the identity challenge
-      # with sigstore/fulcio when running outside of PRs.
-      id-token: write
-
-    steps:
-      - uses: actions/checkout@v5
+          daemon-config: |
+            {"features": {"containerd-snapshotter": true}}
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
@@ -68,18 +52,6 @@ jobs:
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v3
 
-      # Login against a Docker registry except on PR
-      # https://github.com/docker/login-action
-      - name: Log into registry ${{ env.REGISTRY }}
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Extract metadata (tags, labels) for Docker
-      # https://github.com/docker/metadata-action
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -95,21 +67,112 @@ jobs:
           BAKE_FILE: ${{ steps.meta.outputs.bake-file }}
         run: cat "$BAKE_FILE"
 
-      # https://github.com/actions/upload-artifact
+      - name: Build and load image for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          load: true
+          push: false
+          tags: |
+            jupyter:test
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Save image
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          mapfile -t tags <<< "$IMAGE_TAGS"
+          docker image save --output "$RUNNER_TEMP/jupyter-image.tar" jupyter:test "${tags[@]}"
+
+      - name: Archive image
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-image
+          path: ${{ runner.temp }}/jupyter-image.tar
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Archive metadata
         uses: actions/upload-artifact@v4
         with:
           name: metadata.json
           path: ${{ steps.meta.outputs.bake-file }}
 
-      # Build and push Docker image with Buildx (don't push on PR)
-      # https://github.com/docker/build-push-action
-      - name: Build and push Docker image
-        id: build-and-push
-        uses: docker/build-push-action@v6
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
-          context: .
-          platforms: linux/amd64, linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: make development-requirements
+
+      - name: Setup Docker image store
+        uses: docker/setup-docker-action@v5
+        with:
+          daemon-config: |
+            {"features": {"containerd-snapshotter": true}}
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: built-image
+          path: ${{ runner.temp }}
+
+      - name: Load image
+        run: docker image load --input "$RUNNER_TEMP/jupyter-image.tar"
+
+      - name: Test both platforms with unittest
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            echo "Testing $platform"
+            DOCKER_DEFAULT_PLATFORM="$platform" make test-image
+          done
+
+  push:
+    needs: [build, test]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Setup Docker image store
+        uses: docker/setup-docker-action@v5
+        with:
+          daemon-config: |
+            {"features": {"containerd-snapshotter": true}}
+
+      - name: Download tested image
+        uses: actions/download-artifact@v4
+        with:
+          name: built-image
+          path: ${{ runner.temp }}
+
+      - name: Load tested image
+        run: docker image load --input "$RUNNER_TEMP/jupyter-image.tar"
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push tested image
+        env:
+          IMAGE_TAGS: ${{ needs.build.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            docker image push "$tag"
+          done <<< "$IMAGE_TAGS"

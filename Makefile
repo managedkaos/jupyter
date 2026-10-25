@@ -24,6 +24,9 @@ build: ## Build the local image
 	docker build -t $(IMAGE) .
 
 test: build ## Build and run container integration tests
+	$(MAKE) test-image
+
+test-image: ## Run integration tests against an existing image
 	JUPYTER_TEST_IMAGE=$(IMAGE) $(VENV)/bin/python -m unittest discover -s tests -v
 
-.PHONY: help development-requirements lint pre-commit-install pre-commit-run build test
+.PHONY: help development-requirements lint pre-commit-install pre-commit-run build test test-image
