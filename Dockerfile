@@ -33,4 +33,12 @@ EXPOSE 8888
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
     CMD curl --fail --silent http://localhost:8888/api || exit 1
 
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--ServerApp.root_dir=/home/jupyter"]
+    # Launch JupyterLab without a token/password (suitable for local dev)
+CMD ["jupyter", "lab", \
+     "--ip=0.0.0.0", \
+     "--port=8888", \
+     "--no-browser", \
+     "--NotebookApp.token=''", \
+     "--NotebookApp.password=''", \
+     "--notebook-dir=/home/jupyter", \
+     "--ServerApp.root_dir=/home/jupyter"]
