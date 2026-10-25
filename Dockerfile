@@ -40,5 +40,4 @@ CMD ["jupyter", "lab", \
      "--no-browser", \
      "--NotebookApp.token=''", \
      "--NotebookApp.password=''", \
-     "--notebook-dir=/home/jupyter", \
      "--ServerApp.root_dir=/home/jupyter"]

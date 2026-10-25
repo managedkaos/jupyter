@@ -74,6 +74,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           load: true
           push: false
+          cache-from: type=gha,scope=jupyter-image
+          cache-to: type=gha,scope=jupyter-image,mode=max
           tags: |
             jupyter:test
             ${{ steps.meta.outputs.tags }}

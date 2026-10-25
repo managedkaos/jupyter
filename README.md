@@ -14,11 +14,10 @@ Copy `compose.yml` into the project, then run:
 mkdir -p notebooks input_data training_data output_data utilities
 docker compose pull
 docker compose up -d
-docker compose logs jupyter
 ```
 
-Open http://localhost:8888 and enter the token shown in the logs. Token
-authentication is enabled and the port is bound to localhost. The notebook
+Open http://localhost:8888 directly; no token or password is required.
+The port is bound to localhost. The notebook
 browser opens at `/home/jupyter`, with all five mounted project folders visible.
 Changes in these folders persist on the host. Linux host folders must be writable
 by UID 1000. The source project's `utilties` mount typo is corrected to `utilities`.
@@ -65,6 +64,13 @@ the same artifact and pushes its existing tags without rebuilding. Docker's
 containerd image store preserves both platforms through save, load, and push.
 Pull requests skip the push job.
 
+The build job restores and saves Docker layers using the GitHub Actions cache
+(`type=gha`, scope `jupyter-image`, `mode=max`). After the first run populates the
+cache, unchanged system and Python dependency layers can be reused across runs.
+Changing `requirements.txt` rebuilds the Python installation layer and subsequent
+layers while preserving the system package layer. Image artifact transfers and
+tests still run even when the build uses cached layers.
+
 Images receive short and full commit SHA tags and, for branch builds, a branch
 tag. Git version tags do not produce semantic version image tags. After the first
 publication, set the GitHub package visibility to public if projects should pull
@@ -89,7 +95,7 @@ Ruff checks and formats the Python tests, and pre-commit also validates Compose.
 Pre-commit checks tracked files; stage new files before running it locally.
 `make test` requires Docker and builds `jupyter:test` before running unittest
 integration checks for dependencies, writable notebooks, non-root execution,
-server health, and authentication. Temporary test containers are removed afterward.
+server health, and access without authentication. Temporary test containers are removed afterward.
 Use `make` to see all targets, or `make test IMAGE=jupyter:local` to choose a local
 image tag. Use `make test-image` to test an existing image without rebuilding.
 Local tests use the host architecture by default; CI tests both platforms.
