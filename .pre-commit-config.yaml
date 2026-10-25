@@ -1,0 +1,19 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Ruff lint
+        entry: .venv/bin/ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: Ruff format
+        entry: .venv/bin/ruff format --check
+        language: system
+        types: [python]
+      - id: compose-config
+        name: Validate Compose configuration
+        entry: docker compose config --quiet
+        language: system
+        pass_filenames: false
+        files: ^compose\.yml$

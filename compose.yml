@@ -1,0 +1,12 @@
+services:
+  jupyter:
+    image: ${JUPYTER_IMAGE:-ghcr.io/managedkaos/jupyter:main}
+    init: true
+    ports:
+      - "127.0.0.1:${JUPYTER_PORT:-8888}:8888"
+    volumes:
+      - ./input_data:/home/jupyter/input_data
+      - ./training_data:/home/jupyter/training_data
+      - ./output_data:/home/jupyter/output_data
+      - ./notebooks:/home/jupyter/notebooks
+      - ./utilities:/home/jupyter/utilities
